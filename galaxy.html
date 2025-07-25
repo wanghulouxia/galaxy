@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D粒子银河系统</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+            font-family: 'Arial', sans-serif;
+        }
+        
+        #canvas {
+            display: block;
+            cursor: move;
+        }
+        
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: #fff;
+            font-size: 14px;
+            text-shadow: 0 0 5px rgba(255,255,255,0.5);
+            z-index: 100;
+        }
+        
+        #controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            color: #fff;
+            font-size: 12px;
+            background: rgba(0,0,0,0.5);
+            padding: 15px;
+            border-radius: 5px;
+            z-index: 100;
+        }
+        
+        .control-group {
+            margin: 10px 0;
+        }
+        
+        label {
+            display: inline-block;
+            width: 120px;
+        }
+        
+        input[type="range"] {
+            width: 100px;
+            vertical-align: middle;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    
+    <div id="info">
+        <h3>3D粒子银河系统</h3>
+        <p>鼠标拖拽旋转视角 | 滚轮缩放</p>
+    </div>
+    
+    <div id="controls">
+        <h4>控制面板</h4>
+        <div class="control-group">
+            <label>旋转速度:</label>
+            <input type="range" id="rotationSpeed" min="0" max="2" step="0.1" value="0.5">
+        </div>
+        <div class="control-group">
+            <label>粒子数量:</label>
+            <input type="range" id="particleCount" min="1000" max="10000" step="500" value="5000">
+        </div>
+        <div class="control-group">
+            <label>光照强度:</label>
+            <input type="range" id="lightIntensity" min="0" max="2" step="0.1" value="1">
+        </div>
+        <div class="control-group">
+            <label>星云密度:</label>
+            <input type="range" id="nebulaDensity" min="0.5" max="3" step="0.1" value="1.5">
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // 设置画布大小
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+        
+        // 全局变量
+        let particles = [];
+        let stars = [];
+        let mouseX = 0;
+        let mouseY = 0;
+        let isMouseDown = false;
+        let rotationX = 0;
+        let rotationY = 0;
+        let targetRotationX = 0;
+        let targetRotationY = 0;
+        
+        // 控制参数
+        let config = {
+            rotationSpeed: 0.5,
+            particleCount: 5000,
+            lightIntensity: 1,
+            nebulaDensity: 1.5
+        };
+        
+        // 粒子类
+        class Particle {
+            constructor(x, y, z) {
+                this.x = x;
+                this.y = y;
+                this.z = z;
+                this.originalX = x;
+                this.originalY = y;
+                this.originalZ = z;
+                this.size = Math.random() * 3 + 1;
+                this.brightness = Math.random() * 0.5 + 0.5;
+                this.color = this.getRandomColor();
+                this.angle = Math.random() * Math.PI * 2;
+                this.speed = Math.random() * 0.001 + 0.0005;
+                this.distance = Math.sqrt(x*x + y*y + z*z);
+            }
+            
+            getRandomColor() {
+                const colors = [
+                    { r: 255, g: 100, b: 100 },
+                    { r: 100, g: 150, b: 255 },
+                    { r: 255, g: 200, b: 100 },
+                    { r: 200, g: 100, b: 255 },
+                    { r: 100, g: 255, b: 200 }
+                ];
+                return colors[Math.floor(Math.random() * colors.length)];
+            }
+            
+            update() {
+                // 银河旋转效果
+                this.angle += this.speed * config.rotationSpeed;
+                const newX = this.originalX * Math.cos(this.angle) - this.originalY * Math.sin(this.angle);
+                const newY = this.originalX * Math.sin(this.angle) + this.originalY * Math.cos(this.angle);
+                
+                this.x = newX;
+                this.y = newY;
+                
+                // 添加一些随机运动
+                this.x += (Math.random() - 0.5) * 0.5;
+                this.y += (Math.random() - 0.5) * 0.5;
+                this.z += (Math.random() - 0.5) * 0.5;
+            }
+            
+            draw() {
+                // 3D投影
+                const scale = 600 / (600 + this.z);
+                const x2d = this.x * scale + canvas.width / 2;
+                const y2d = this.y * scale + canvas.height / 2;
+                
+                if (x2d < 0 || x2d > canvas.width || y2d < 0 || y2d > canvas.height) return;
+                
+                // 计算光照效果
+                const lightDistance = Math.sqrt(
+                    Math.pow(this.x - 100, 2) + 
+                    Math.pow(this.y - 100, 2) + 
+                    Math.pow(this.z, 2)
+                );
+                const light = Math.max(0, 1 - lightDistance / 300) * config.lightIntensity;
+                
+                // 设置颜色和透明度
+                const alpha = Math.min(1, (this.brightness + light) * scale);
+                const size = this.size * scale;
+                
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = `rgb(${this.color.r}, ${this.color.g}, ${this.color.b})`;
+                ctx.shadowBlur = size * 2;
+                ctx.shadowColor = `rgb(${this.color.r}, ${this.color.g}, ${this.color.b})`;
+                
+                ctx.beginPath();
+                ctx.arc(x2d, y2d, size, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.globalAlpha = 1;
+                ctx.shadowBlur = 0;
+            }
+        }
+        
+        // 星云粒子
+        class NebulaParticle extends Particle {
+            constructor(x, y, z) {
+                super(x, y, z);
+                this.size = Math.random() * 8 + 3;
+                this.brightness = Math.random() * 0.3 + 0.1;
+                this.drift = {
+                    x: (Math.random() - 0.5) * 0.5,
+                    y: (Math.random() - 0.5) * 0.5,
+                    z: (Math.random() - 0.5) * 0.5
+                };
+            }
+            
+            update() {
+                super.update();
+                // 添加漂移效果
+                this.x += this.drift.x;
+                this.y += this.drift.y;
+                this.z += this.drift.z;
+            }
+            
+            draw() {
+                const scale = 600 / (600 + this.z);
+                const x2d = this.x * scale + canvas.width / 2;
+                const y2d = this.y * scale + canvas.height / 2;
+                
+                if (x2d < -50 || x2d > canvas.width + 50 || 
+                    y2d < -50 || y2d > canvas.height + 50) return;
+                
+                // 星云效果
+                const gradient = ctx.createRadialGradient(x2d, y2d, 0, x2d, y2d, this.size * scale);
+                gradient.addColorStop(0, `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, 0.3)`);
+                gradient.addColorStop(1, `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, 0)`);
+                
+                ctx.globalAlpha = 0.3;
+                ctx.fillStyle = gradient;
+                
+                ctx.beginPath();
+                ctx.arc(x2d, y2d, this.size * scale * config.nebulaDensity, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.globalAlpha = 1;
+            }
+        }
+        
+        // 初始化粒子
+        function initParticles() {
+            particles = [];
+            stars = [];
+            
+            // 创建银河主盘粒子
+            for (let i = 0; i < config.particleCount; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const distance = Math.pow(Math.random(), 0.5) * 300;
+                const height = (Math.random() - 0.5) * 50;
+                
+                const x = Math.cos(angle) * distance;
+                const y = height;
+                const z = Math.sin(angle) * distance;
+                
+                particles.push(new Particle(x, y, z));
+            }
+            
+            // 创建星云粒子
+            for (let i = 0; i < 100; i++) {
+                const x = (Math.random() - 0.5) * 800;
+                const y = (Math.random() - 0.5) * 800;
+                const z = (Math.random() - 0.5) * 800;
+                
+                stars.push(new NebulaParticle(x, y, z));
+            }
+        }
+        
+        // 鼠标控制
+        canvas.addEventListener('mousedown', (e) => {
+            isMouseDown = true;
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+        
+        canvas.addEventListener('mousemove', (e) => {
+            if (isMouseDown) {
+                const deltaX = e.clientX - mouseX;
+                const deltaY = e.clientY - mouseY;
+                
+                targetRotationY += deltaX * 0.01;
+                targetRotationX += deltaY * 0.01;
+                
+                mouseX = e.clientX;
+                mouseY = e.clientY;
+            }
+        });
+        
+        canvas.addEventListener('mouseup', () => {
+            isMouseDown = false;
+        });
+        
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const zoom = e.deltaY > 0 ? 1.1 : 0.9;
+            // 这里可以添加缩放功能
+        });
+        
+        // 控制面板事件
+        document.getElementById('rotationSpeed').addEventListener('input', (e) => {
+            config.rotationSpeed = parseFloat(e.target.value);
+        });
+        
+        document.getElementById('particleCount').addEventListener('input', (e) => {
+            config.particleCount = parseInt(e.target.value);
+            initParticles();
+        });
+        
+        document.getElementById('lightIntensity').addEventListener('input', (e) => {
+            config.lightIntensity = parseFloat(e.target.value);
+        });
+        
+        document.getElementById('nebulaDensity').addEventListener('input', (e) => {
+            config.nebulaDensity = parseFloat(e.target.value);
+        });
+        
+        // 动画循环
+        function animate() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 平滑旋转
+            rotationX += (targetRotationX - rotationX) * 0.05;
+            rotationY += (targetRotationY - rotationY) * 0.05;
+            
+            // 应用旋转
+            ctx.save();
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            ctx.rotate(rotationY);
+            ctx.translate(-canvas.width / 2, -canvas.height / 2);
+            
+            // 更新和绘制星云
+            stars.forEach(star => {
+                star.update();
+                star.draw();
+            });
+            
+            // 更新和绘制粒子
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+            
+            ctx.restore();
+            
+            requestAnimationFrame(animate);
+        }
+        
+        // 初始化并开始动画
+        initParticles();
+        animate();
+    </script>
+</body>
+</html>
